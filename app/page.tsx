@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Send, Square, Sun, Moon, Menu, Settings, MessageSquarePlus, Clock, Star, Book, Bot, Search, Code, FileText, Lightbulb, Loader2, Edit2, Copy, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -224,10 +224,10 @@ export default function Home() {
   };
 
   // Mic animation variants
-  const pulseVariants = {
+  const pulseVariants: Variants = {
     idle: { scale: 1, opacity: 0.5 },
-    listening: { scale: [1, 1.4, 1], opacity: [0.3, 0.8, 0.3], transition: { repeat: Infinity, duration: 1.5, ease: "easeInOut" } },
-    searching: { scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5], transition: { repeat: Infinity, duration: 1, ease: "easeInOut" } }
+    listening: { scale: [1, 1.4, 1], opacity: [0.3, 0.8, 0.3], transition: { repeat: Infinity, duration: 1.5, ease: 'easeInOut' as const } },
+    searching: { scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5], transition: { repeat: Infinity, duration: 1, ease: 'easeInOut' as const } }
   };
 
   const renderHeader = () => {
@@ -438,7 +438,7 @@ export default function Home() {
                     {copied ? <Check size={16} color="var(--accent)" /> : <Copy size={16} />}
                     {copied ? 'Copied' : 'Copy'}
                   </button>
-                  <button onClick={() => { setTextInput(''); document.querySelector('.input-field')?.focus(); }} className="icon-button" style={{ width: 'auto', padding: '0 0.75rem', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}>
+                  <button onClick={() => { setTextInput(''); (document.querySelector('.input-field') as HTMLInputElement)?.focus(); }} className="icon-button" style={{ width: 'auto', padding: '0 0.75rem', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}>
                     <MessageSquarePlus size={16} />
                     New Chat
                   </button>
