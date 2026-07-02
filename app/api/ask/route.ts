@@ -37,7 +37,7 @@ Transcript: "${query.trim()}"`;
 
     // STEP 2: Call Tavily directly using official SDK
     const tavilyClient = tavily({
-      apiKey: process.env.TAVILY_API_KEY,
+      apiKey: process.env.TAVILY_API_KEY!,
     });
 
     const searchResponse = await tavilyClient.search(optimizedQuery, {
