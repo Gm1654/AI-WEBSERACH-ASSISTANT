@@ -70,21 +70,6 @@ function buildEvidenceBundle(results: TavilySearchResult[]) {
     .join('\n\n');
 }
 
-function buildSourcesSection(results: TavilySearchResult[]) {
-  const lines = results
-    .map((result, index) => {
-      const title = result.title?.trim() || `Source ${index + 1}`;
-      const url = result.url?.trim();
-      if (!url) return null;
-      return `- [${title}](${url})`;
-    })
-    .filter(Boolean);
-
-  if (lines.length === 0) return '';
-
-  return `## Sources\n\n${lines.join('\n')}`;
-}
-
 function stripExistingSourcesSection(answer: string) {
   return answer
     .replace(/\n## Sources[\s\S]*$/i, '')
@@ -302,11 +287,9 @@ ${sourceLines}`;
       ? stripExistingSourcesSection(finalResponse.content)
       : FALLBACK_MESSAGE;
 
-    const sourcesSection = buildSourcesSection(enrichedResults);
-    const finalAnswer = sourcesSection ? `${answer}\n\n${sourcesSection}` : answer;
     const sources = buildSourceItems(enrichedResults);
 
-    return NextResponse.json({ answer: finalAnswer, sources });
+    return NextResponse.json({ answer, sources });
   } catch (error) {
     console.error('Error processing query:', error);
     return NextResponse.json(
