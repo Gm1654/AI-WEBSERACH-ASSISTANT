@@ -588,7 +588,7 @@ html, body {
   }
 
   .chat-container {
-    padding: 1rem 0.75rem 180px;
+    padding: 0.85rem 0.75rem 170px;
   }
 
   .hero-empty {
@@ -602,18 +602,19 @@ html, body {
   }
 
   .hero-subtitle {
-    font-size: 0.98rem;
-    margin-bottom: 1.5rem;
+    font-size: 0.93rem;
+    margin-bottom: 1.1rem;
   }
 
   .hero-explainer {
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
   }
 
   .hero-pill {
-    font-size: 0.8rem;
-    padding: 0.5rem 0.75rem;
+    font-size: 0.72rem;
+    padding: 0.4rem 0.6rem;
+    letter-spacing: 0.01em;
   }
 
   .sidebar-title {
@@ -632,7 +633,7 @@ html, body {
   }
 
   .input-wrapper {
-    bottom: 0.75rem;
+    bottom: 1.15rem;
     padding: 0 0.75rem;
   }
 
@@ -668,11 +669,20 @@ html, body {
 
 @media (max-width: 480px) {
   .hero-title {
-    font-size: 1.65rem;
+    font-size: 1.55rem;
   }
 
   .hero-subtitle {
     line-height: 1.5;
+  }
+
+  .hero-explainer {
+    gap: 0.35rem;
+  }
+
+  .hero-pill {
+    font-size: 0.68rem;
+    padding: 0.34rem 0.52rem;
   }
 
   .mockup-section h3 {
