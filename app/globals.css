@@ -69,7 +69,7 @@ html, body {
 .app-layout {
   display: flex;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
 }
 
 /* ─── SIDEBAR ─── */
@@ -174,6 +174,10 @@ html, body {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.mobile-brand {
+  display: none;
 }
 
 .icon-button {
@@ -558,18 +562,7 @@ html, body {
   }
 
   .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    height: 100vh;
-    width: min(84vw, 300px);
-    transform: translateX(0);
-    margin-left: 0;
-    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.2);
-  }
-
-  .sidebar.collapsed {
-    margin-left: 0;
-    transform: translateX(-100%);
+    display: none;
   }
 
   .main-content {
@@ -586,12 +579,21 @@ html, body {
     gap: 0.5rem;
   }
 
+  .nav-left > .icon-button {
+    display: none;
+  }
+
+  .mobile-brand {
+    display: inline-block;
+  }
+
   .chat-container {
-    padding: 1rem 0.75rem 140px;
+    padding: 1rem 0.75rem 180px;
   }
 
   .hero-empty {
     max-width: 100%;
+    padding-top: 0.75rem;
   }
 
   .hero-title {
@@ -614,6 +616,10 @@ html, body {
     padding: 0.5rem 0.75rem;
   }
 
+  .sidebar-title {
+    display: none;
+  }
+
   .mockup-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
@@ -626,7 +632,7 @@ html, body {
   }
 
   .input-wrapper {
-    bottom: 1rem;
+    bottom: 0.75rem;
     padding: 0 0.75rem;
   }
 

@@ -23,7 +23,8 @@ export default function Home() {
   const [textInput, setTextInput] = useState<string>('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 768 : true));
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
   
   const recognitionRef = useRef<any>(null);
   const utterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
@@ -35,6 +36,18 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const updateLayoutMode = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      setSidebarOpen(mobile ? false : true);
+    };
+
+    window.addEventListener('resize', updateLayoutMode);
+    updateLayoutMode();
+    return () => window.removeEventListener('resize', updateLayoutMode);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -277,7 +290,7 @@ export default function Home() {
   return (
     <div className="app-layout">
       {/* SIDEBAR */}
-      <aside className={`sidebar ${!sidebarOpen ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${!sidebarOpen ? 'collapsed' : ''} ${isMobile ? 'mobile' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <Bot size={20} />
@@ -317,7 +330,7 @@ export default function Home() {
             <button className="icon-button" onClick={() => setSidebarOpen(!sidebarOpen)}>
               <Menu size={20} />
             </button>
-            {!sidebarOpen && <span style={{ fontWeight: 600 }}>Nova AI</span>}
+            <span className="mobile-brand" style={{ fontWeight: 600 }}>Nova AI</span>
           </div>
           <div className="nav-right">
             <button className="icon-button" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">
@@ -360,7 +373,7 @@ export default function Home() {
             ) : !result ? (
               <motion.div 
                 key="empty-state"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 1, y: 0 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.4 }}
