@@ -64,6 +64,28 @@ function buildEvidenceBundle(results: TavilySearchResult[]) {
     .join('\n\n');
 }
 
+function buildSourcesSection(results: TavilySearchResult[]) {
+  const lines = results
+    .map((result, index) => {
+      const title = result.title?.trim() || `Source ${index + 1}`;
+      const url = result.url?.trim();
+      if (!url) return null;
+      return `- [${title}](${url})`;
+    })
+    .filter(Boolean);
+
+  if (lines.length === 0) return '';
+
+  return `## Sources\n\n${lines.join('\n')}`;
+}
+
+function stripExistingSourcesSection(answer: string) {
+  return answer
+    .replace(/\n## Sources[\s\S]*$/i, '')
+    .replace(/\n# Sources[\s\S]*$/i, '')
+    .trim();
+}
+
 function parseResearchPlan(rawText: string, fallbackQuery: string): ResearchPlan {
   try {
     const parsed = JSON.parse(stripCodeFences(rawText));
@@ -236,7 +258,7 @@ Rules:
 2. Do not invent details, statistics, dates, claims, or URLs.
 3. Every substantive claim should be supported with one or more citations like [1] or [2].
 4. If the evidence does not support the answer, return exactly: ${FALLBACK_MESSAGE}
-5. End with a ## Sources section that lists the URLs in the same [n] order.
+5. Do not write a Sources section. It will be appended separately from the verified Tavily URLs.
 
 Evidence bundle:
 ${resultsText}
@@ -250,10 +272,13 @@ ${sourceLines}`;
     ]);
 
     const answer = typeof finalResponse.content === 'string'
-      ? finalResponse.content
+      ? stripExistingSourcesSection(finalResponse.content)
       : FALLBACK_MESSAGE;
 
-    return NextResponse.json({ answer });
+    const sourcesSection = buildSourcesSection(enrichedResults);
+    const finalAnswer = sourcesSection ? `${answer}\n\n${sourcesSection}` : answer;
+
+    return NextResponse.json({ answer: finalAnswer });
   } catch (error) {
     console.error('Error processing query:', error);
     return NextResponse.json(
