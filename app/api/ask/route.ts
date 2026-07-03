@@ -2,6 +2,106 @@ import { NextResponse } from 'next/server';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { tavily } from '@tavily/core';
 
+type TavilySearchResult = {
+  title?: string;
+  url?: string;
+  content?: string;
+  rawContent?: string;
+  score?: number;
+  publishedDate?: string;
+  favicon?: string;
+};
+
+type TavilyExtractResult = {
+  url?: string;
+  rawContent?: string;
+};
+
+type ResearchPlan = {
+  primaryQuery: string;
+  supportingQueries: string[];
+  topic: 'general' | 'news';
+  timeRange?: 'day' | 'week' | 'month' | 'year';
+  includeDomains?: string[];
+  excludeDomains?: string[];
+};
+
+const FALLBACK_MESSAGE = 'I could not find verified information on this. Please try rephrasing.';
+
+function stripCodeFences(value: string) {
+  return value.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+}
+
+function dedupeUrls(results: TavilySearchResult[]) {
+  const seen = new Set<string>();
+
+  return results.filter((result) => {
+    const url = result.url?.trim();
+    if (!url) return false;
+
+    const normalized = url.replace(/\/$/, '').toLowerCase();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function buildEvidenceBundle(results: TavilySearchResult[]) {
+  return results
+    .map((result, index) => {
+      const content = (result.rawContent ?? result.content ?? '').trim() || 'No extract available.';
+
+      return [
+        `[${index + 1}] ${result.title ?? 'Untitled source'}`,
+        `URL: ${result.url ?? 'Unknown URL'}`,
+        result.publishedDate ? `Published: ${result.publishedDate}` : '',
+        typeof result.score === 'number' ? `Relevance score: ${result.score.toFixed(3)}` : '',
+        `Content: ${content}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    })
+    .join('\n\n');
+}
+
+function parseResearchPlan(rawText: string, fallbackQuery: string): ResearchPlan {
+  try {
+    const parsed = JSON.parse(stripCodeFences(rawText));
+
+    const supportingQueries = Array.isArray(parsed.supportingQueries)
+      ? parsed.supportingQueries.filter((item: unknown) => typeof item === 'string' && item.trim())
+      : [];
+
+    const includeDomains = Array.isArray(parsed.includeDomains)
+      ? parsed.includeDomains.filter((item: unknown) => typeof item === 'string' && item.trim())
+      : undefined;
+
+    const excludeDomains = Array.isArray(parsed.excludeDomains)
+      ? parsed.excludeDomains.filter((item: unknown) => typeof item === 'string' && item.trim())
+      : undefined;
+
+    const topic = parsed.topic === 'news' ? 'news' : 'general';
+    const timeRange = ['day', 'week', 'month', 'year'].includes(parsed.timeRange) ? parsed.timeRange : undefined;
+
+    return {
+      primaryQuery: typeof parsed.primaryQuery === 'string' && parsed.primaryQuery.trim()
+        ? parsed.primaryQuery.trim()
+        : fallbackQuery,
+      supportingQueries: supportingQueries.slice(0, 3),
+      topic,
+      timeRange,
+      includeDomains,
+      excludeDomains,
+    };
+  } catch {
+    return {
+      primaryQuery: fallbackQuery,
+      supportingQueries: [],
+      topic: 'general',
+    };
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { query } = await req.json();
@@ -10,98 +110,154 @@ export async function POST(req: Request) {
       return NextResponse.json({ answer: "I didn't catch that. Could you repeat?" }, { status: 400 });
     }
 
+    const queryText = query.trim();
+    const timeSensitive = /\b(latest|today|now|current|recent|this week|this month|breaking|news|update|price|prices|release|released|announced|2026)\b/i.test(queryText);
+
     const llm = new ChatGoogleGenerativeAI({
       apiKey: process.env.GEMINI_API_KEY,
-      model: "gemini-3.1-flash-lite",
-      temperature: 0.3,
+      model: 'gemini-3.1-flash-lite',
+      temperature: 0.2,
     });
 
-    // STEP 1: Optimize query using LLM
-    const searchOptimizationPrompt = `You are a search query optimizer. Convert the following voice transcript or question into a single highly targeted, research-grade search query.
+    const searchOptimizationPrompt = `You are a web research planner for Tavily.
+
+Return a single JSON object only, with this shape:
+{
+  "primaryQuery": "string",
+  "supportingQueries": ["string", "string"],
+  "topic": "general" | "news",
+  "timeRange": "day" | "week" | "month" | "year" | null,
+  "includeDomains": ["string"],
+  "excludeDomains": ["string"]
+}
 
 Rules:
-- Be precise and specific
-- Use professional terminology
-- Include the current year (2026) if time-relevant
-- Output ONLY the search query — no quotes, no explanation, no extra text
+- primaryQuery must be the best Tavily search query for the user request
+- supportingQueries should be short, distinct follow-up searches that cover adjacent angles
+- use topic "news" and a timeRange when the question is time-sensitive or current-event oriented
+- keep includeDomains/excludeDomains empty unless they clearly improve accuracy
+- do not wrap the JSON in markdown or code fences
 
-Transcript: "${query.trim()}"`;
+User request: "${queryText}"
+Time sensitive: ${timeSensitive ? 'yes' : 'no'}`;
 
     const optimizedQueryResponse = await llm.invoke(searchOptimizationPrompt);
-    const optimizedQuery = typeof optimizedQueryResponse.content === 'string'
-      ? optimizedQueryResponse.content.trim()
-      : query;
+    const researchPlan = parseResearchPlan(
+      typeof optimizedQueryResponse.content === 'string' ? optimizedQueryResponse.content : '',
+      queryText
+    );
 
-    console.log("Original query:", query);
-    console.log("Optimized query:", optimizedQuery);
+    const optimizedQuery = researchPlan.primaryQuery || queryText;
+    const searchQueries = [optimizedQuery, ...researchPlan.supportingQueries]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 4);
 
-    // STEP 2: Call Tavily directly using official SDK
+    console.log('Original query:', queryText);
+    console.log('Optimized query:', optimizedQuery);
+
     const tavilyClient = tavily({
       apiKey: process.env.TAVILY_API_KEY!,
     });
 
-    const searchResponse = await tavilyClient.search(optimizedQuery, {
-      maxResults: 7,
-      searchDepth: "advanced",
-      includeAnswer: true,
-    });
+    const searchResponses = await Promise.all(
+      searchQueries.map((searchQuery, index) =>
+        tavilyClient.search(searchQuery, {
+          maxResults: index === 0 ? 7 : 4,
+          searchDepth: 'advanced',
+          topic: researchPlan.topic,
+          ...(researchPlan.timeRange ? { timeRange: researchPlan.timeRange } : {}),
+          ...(researchPlan.includeDomains && researchPlan.includeDomains.length > 0
+            ? { includeDomains: researchPlan.includeDomains }
+            : {}),
+          ...(researchPlan.excludeDomains && researchPlan.excludeDomains.length > 0
+            ? { excludeDomains: researchPlan.excludeDomains }
+            : {}),
+          includeAnswer: false,
+          includeRawContent: 'markdown',
+        })
+      )
+    );
 
-    const resultsText = searchResponse.results
-      .map((r: any, i: number) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content}`)
-      .join('\n\n');
+    const combinedSearchResults = dedupeUrls(
+      searchResponses.flatMap((response) => response.results ?? [])
+    ).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
-    const tavilyAnswer = searchResponse.answer ? `Summary: ${searchResponse.answer}\n\n` : '';
+    console.log('Tavily search responses:', searchResponses.length);
+    console.log('Tavily combined results:', combinedSearchResults.length);
 
-    console.log("Tavily returned", searchResponse.results.length, "results");
-
-    if (searchResponse.results.length === 0) {
-      return NextResponse.json({ answer: "I could not find verified information on this. Please try rephrasing." });
+    if (combinedSearchResults.length === 0) {
+      return NextResponse.json({ answer: FALLBACK_MESSAGE });
     }
 
-    // STEP 3: Generate rich markdown answer
-    const systemPrompt = `You are an expert research assistant that delivers highly detailed, well-structured answers based on real-time web search results. 
+    const topUrls = combinedSearchResults.slice(0, 3).map((result) => result.url!).filter(Boolean);
+    const extractResponse = topUrls.length > 0
+      ? await tavilyClient.extract(topUrls, {
+          extractDepth: 'advanced',
+          format: 'markdown',
+          query: optimizedQuery,
+          chunksPerSource: 3,
+          includeFavicon: true,
+        })
+      : null;
 
-Your answers must be rich in detail, beautifully formatted in Markdown, and 100% sourced from the search results provided below.
+    const extractedByUrl = new Map<string, string>();
+    extractResponse?.results?.forEach((result: TavilyExtractResult) => {
+      if (result?.url && typeof result?.rawContent === 'string' && result.rawContent.trim()) {
+        extractedByUrl.set(result.url.replace(/\/$/, '').toLowerCase(), result.rawContent.trim());
+      }
+    });
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-MANDATORY RULES
-━━━━━━━━━━━━━━━━━━━━━━━━
-1. ONLY use information from the provided search results.
-2. NEVER fabricate any facts, statistics, names, dates, or URLs.
-3. If results don't contain the answer, say: "I could not find verified information on this. Please try rephrasing."
-4. Always cite source URLs at the end.
+    const enrichedResults = combinedSearchResults.map((result) => {
+      const key = result.url?.replace(/\/$/, '').toLowerCase() ?? '';
+      const extractedContent = extractedByUrl.get(key);
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-FORMATTING RULES
-━━━━━━━━━━━━━━━━━━━━━━━━
-- Use proper Markdown: **bold**, ## headers, numbered/bullet lists, tables where appropriate
-- Start with a **bold one-line direct answer**
-- Use ## for section headers
-- Use tables for ranked/comparative data (e.g. top 10 lists → table with Rank, Name, Description columns)
-- Use bullet points for features or sub-details
-- Be thorough and detailed — give a COMPLETE, comprehensive answer
-- End with a ## Sources section listing the real URLs from search results
+      return {
+        ...result,
+        rawContent: extractedContent ?? result.rawContent,
+      };
+    });
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-SEARCH RESULTS
-━━━━━━━━━━━━━━━━━━━━━━━━
-${tavilyAnswer}${resultsText}`;
+    const resultsText = buildEvidenceBundle(enrichedResults);
+    const sourceLines = enrichedResults
+      .map((result, index) => `[${index + 1}] ${result.title ?? 'Untitled source'} - ${result.url ?? 'Unknown URL'}`)
+      .join('\n');
+
+    const systemPrompt = `You are an expert research assistant. You must answer only from the evidence bundle.
+
+Goals:
+- Provide an accurate, citation-backed answer grounded in the Tavily search and extraction results.
+- Prefer specific facts over generic summaries.
+- If the evidence is weak or conflicting, say so instead of guessing.
+- Use markdown with a short direct answer first, then sections for details and sources.
+
+Rules:
+1. Use only facts present in the evidence bundle.
+2. Do not invent details, statistics, dates, claims, or URLs.
+3. Every substantive claim should be supported with one or more citations like [1] or [2].
+4. If the evidence does not support the answer, return exactly: ${FALLBACK_MESSAGE}
+5. End with a ## Sources section that lists the URLs in the same [n] order.
+
+Evidence bundle:
+${resultsText}
+
+Source index:
+${sourceLines}`;
 
     const finalResponse = await llm.invoke([
-      ["system", systemPrompt],
-      ["human", query]
+      ['system', systemPrompt],
+      ['human', queryText],
     ]);
 
     const answer = typeof finalResponse.content === 'string'
       ? finalResponse.content
-      : "I could not find verified information on this. Please try rephrasing.";
+      : FALLBACK_MESSAGE;
 
     return NextResponse.json({ answer });
-
   } catch (error) {
-    console.error("Error processing query:", error);
+    console.error('Error processing query:', error);
     return NextResponse.json(
-      { answer: "I could not find verified information on this. Please try rephrasing." },
+      { answer: FALLBACK_MESSAGE },
       { status: 500 }
     );
   }
