@@ -17,6 +17,12 @@ type TavilyExtractResult = {
   rawContent?: string;
 };
 
+type SourceItem = {
+  title: string;
+  url: string;
+  favicon?: string;
+};
+
 type ResearchPlan = {
   primaryQuery: string;
   supportingQueries: string[];
@@ -84,6 +90,27 @@ function stripExistingSourcesSection(answer: string) {
     .replace(/\n## Sources[\s\S]*$/i, '')
     .replace(/\n# Sources[\s\S]*$/i, '')
     .trim();
+}
+
+function normalizeTitle(value: string | undefined, fallback: string) {
+  return value?.trim() || fallback;
+}
+
+function buildSourceItems(results: TavilySearchResult[]): SourceItem[] {
+  const items: SourceItem[] = [];
+
+  results.forEach((result, index) => {
+    const url = result.url?.trim();
+    if (!url) return;
+
+    items.push({
+      title: normalizeTitle(result.title, `Source ${index + 1}`),
+      url,
+      favicon: result.favicon?.trim() || undefined,
+    });
+  });
+
+  return items;
 }
 
 function parseResearchPlan(rawText: string, fallbackQuery: string): ResearchPlan {
@@ -256,7 +283,7 @@ Goals:
 Rules:
 1. Use only facts present in the evidence bundle.
 2. Do not invent details, statistics, dates, claims, or URLs.
-3. Every substantive claim should be supported with one or more citations like [1] or [2].
+3. Do not use bracket citations like [1], [4, 7], or similar numeric citation markers.
 4. If the evidence does not support the answer, return exactly: ${FALLBACK_MESSAGE}
 5. Do not write a Sources section. It will be appended separately from the verified Tavily URLs.
 
@@ -277,8 +304,9 @@ ${sourceLines}`;
 
     const sourcesSection = buildSourcesSection(enrichedResults);
     const finalAnswer = sourcesSection ? `${answer}\n\n${sourcesSection}` : answer;
+    const sources = buildSourceItems(enrichedResults);
 
-    return NextResponse.json({ answer: finalAnswer });
+    return NextResponse.json({ answer: finalAnswer, sources });
   } catch (error) {
     console.error('Error processing query:', error);
     return NextResponse.json(

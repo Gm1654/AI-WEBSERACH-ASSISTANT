@@ -7,10 +7,18 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 type Status = 'idle' | 'listening' | 'searching';
+type SourceItem = {
+  title: string;
+  url: string;
+  favicon?: string;
+};
+
+const CITATION_PATTERN = /\s*\[(?:\d+(?:\s*,\s*\d+)*)\]/g;
 
 export default function Home() {
   const [status, setStatus] = useState<Status>('idle');
   const [result, setResult] = useState<string>('');
+  const [sources, setSources] = useState<SourceItem[]>([]);
   const [currentQuery, setCurrentQuery] = useState<string>('');
   const [textInput, setTextInput] = useState<string>('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -63,6 +71,7 @@ export default function Home() {
 
     setStatus('searching');
     setResult('');
+    setSources([]);
     setCurrentQuery(query);
     setTextInput('');
     stopSpeaking();
@@ -78,9 +87,10 @@ export default function Home() {
       
       if (abortControllerRef.current !== controller) return;
       
-      setResult(data.answer);
+      setResult(typeof data.answer === 'string' ? data.answer.replace(CITATION_PATTERN, '') : '');
+      setSources(Array.isArray(data.sources) ? data.sources : []);
       setStatus('idle');
-      speak(data.answer);
+      speak(typeof data.answer === 'string' ? data.answer.replace(CITATION_PATTERN, '') : '');
     } catch (error: any) {
       if (error.name === 'AbortError') {
         if (abortControllerRef.current === controller) {
@@ -95,6 +105,7 @@ export default function Home() {
       console.error('Error fetching answer:', error);
       const fallback = "I could not find verified information on this. Please try rephrasing.";
       setResult(fallback);
+      setSources([]);
       setStatus('idle');
       speak(fallback);
     }
@@ -105,6 +116,7 @@ export default function Home() {
       abortControllerRef.current.abort();
       setStatus('idle');
       setResult('Generation stopped by user.');
+      setSources([]);
     }
   };
 
@@ -113,6 +125,7 @@ export default function Home() {
       if (abortControllerRef.current) abortControllerRef.current.abort();
       setStatus('idle');
       setResult('Generation stopped to edit query.');
+      setSources([]);
     }
     setEditValue(currentQuery);
     setIsEditing(true);
@@ -273,7 +286,7 @@ export default function Home() {
         </div>
         
         <nav className="sidebar-nav">
-          <div className="nav-item active" onClick={() => { setResult(''); setCurrentQuery(''); setStatus('idle'); stopSpeaking(); }}>
+          <div className="nav-item active" onClick={() => { setResult(''); setSources([]); setCurrentQuery(''); setStatus('idle'); stopSpeaking(); }}>
             <MessageSquarePlus size={18} />
             <span>New Chat</span>
           </div>
@@ -433,12 +446,80 @@ export default function Home() {
                   {result}
                 </ReactMarkdown>
                 
+                {sources.length > 0 && (
+                  <div style={{ marginTop: '2rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                    <h3 style={{ margin: '0 0 1rem', fontSize: '1.15rem', color: 'var(--text-primary)' }}>Sources</h3>
+                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                      {sources.map((source, index) => {
+                        const hostname = (() => {
+                          try {
+                            return new URL(source.url).hostname.replace(/^www\./, '');
+                          } catch {
+                            return '';
+                          }
+                        })();
+                        const favicon = source.favicon || (hostname ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '');
+
+                        return (
+                          <a
+                            key={`${source.url}-${index}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.9rem',
+                              padding: '0.9rem 1rem',
+                              border: '1px solid var(--border)',
+                              borderRadius: '16px',
+                              background: 'var(--surface)',
+                              color: 'inherit',
+                              textDecoration: 'none'
+                            }}
+                          >
+                            <div style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: '10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: 'var(--surface-hover)',
+                              overflow: 'hidden',
+                              flexShrink: 0
+                            }}>
+                              {favicon ? (
+                                <img
+                                  src={favicon}
+                                  alt=""
+                                  style={{ width: 20, height: 20, objectFit: 'contain' }}
+                                />
+                              ) : (
+                                <Search size={16} />
+                              )}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {source.title}
+                              </div>
+                              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {hostname || source.url}
+                              </div>
+                            </div>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.5rem' }}>
                   <button onClick={handleCopy} className="icon-button" style={{ width: 'auto', padding: '0 0.75rem', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}>
                     {copied ? <Check size={16} color="var(--accent)" /> : <Copy size={16} />}
                     {copied ? 'Copied' : 'Copy'}
                   </button>
-                  <button onClick={() => { setTextInput(''); (document.querySelector('.input-field') as HTMLInputElement)?.focus(); }} className="icon-button" style={{ width: 'auto', padding: '0 0.75rem', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}>
+                  <button onClick={() => { setTextInput(''); setSources([]); (document.querySelector('.input-field') as HTMLInputElement)?.focus(); }} className="icon-button" style={{ width: 'auto', padding: '0 0.75rem', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}>
                     <MessageSquarePlus size={16} />
                     New Chat
                   </button>
