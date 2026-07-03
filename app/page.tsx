@@ -395,7 +395,13 @@ export default function Home() {
                 </div>
 
                 <h1 className="hero-title">How can I help you today?</h1>
-                <p className="hero-subtitle">Type a message or start speaking.</p>
+                <p className="hero-subtitle">Nova AI searches the web in real time, checks sources with Tavily, and turns evidence into clean answers.</p>
+
+                <div className="hero-explainer">
+                  <div className="hero-pill">Live web research</div>
+                  <div className="hero-pill">Tavily source extraction</div>
+                  <div className="hero-pill">Markdown answers with source cards</div>
+                </div>
 
                 {/* Suggestion Chips & Mocks */}
                 {status === 'idle' && (
